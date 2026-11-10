@@ -729,6 +729,7 @@
       <div id="sWarn"></div>`;
     function refresh() {
       const k = periodGet("sP"), list = tasksVtvl(k.tu, k.den), m = C.tongHopB1(list, b1Opts());
+      const khac = m.get("KHAC"); m.delete("KHAC");
       const keys = [...m.keys()].sort(sortMa);
       let mine = { sl: 0, ph: 0, kt: 0, gio: 0 };
       keys.forEach((ma) => { const r = m.get(ma); if (laCuaToi(ma)) { mine.sl += r.sl; mine.ph += r.slPH; mine.kt += r.slKT; mine.gio += r.gioTong; } });
@@ -759,6 +760,9 @@
       if (khongPhut.length) w.push(`${khongPhut.length} sản phẩm khác (không phải văn bản) chưa có thời gian — bấm giờ hoặc nhập số phút thì mới tính được vào giờ bổ sung.`);
       const chuaHt = list.filter((t) => laCuaToi(t.ma_cv) && t.trang_thai !== "Hoàn thành");
       if (chuaHt.length) w.push(`${chuaHt.length} việc thuộc VTVL chưa hoàn thành nhưng vẫn được tính — kiểm tra lại trạng thái.`);
+      const qua = list.filter((t) => laCuaToi(t.ma_cv) && !C.coVanBan(t) && (t.so_phut === null || t.so_phut === undefined || t.so_phut === "") && C.phutTuGio(t) > 960);
+      if (qua.length) w.push(`${qua.length} sản phẩm khác đang được ƯỚC TÍNH trên 16 giờ từ giờ bắt đầu – kết thúc (8 giờ × mỗi ngày làm việc), có thể cao hơn thực tế — vào tab Gắn mã hàng loạt, bỏ tích “Chỉ hiện việc chưa gắn mã” và nhập số phút thực tế.`);
+      if (khac) w.push(`${khac.slThuc || (khac.sl + khac.slPH + khac.slKT)} việc đã đánh dấu “Không thuộc VTVL” — không tính vào số liệu.`);
       $("#sWarn").innerHTML = w.length ? `<div class="warn" style="margin-top:14px">${w.map(esc).join("<br>")}</div>` : "";
     }
     periodWire("sP", refresh); refresh();
@@ -766,49 +770,76 @@
 
   // ── Tab 2: Gắn mã hàng loạt ──
   function vtTag(root) {
-    root.innerHTML = `<p class="hint">Gắn mã công việc, vai trò, nhóm – mức văn bản cho nhiều việc cùng lúc. Bấm <b>Lưu</b> để ghi vào cơ sở dữ liệu. Nút gợi ý chỉ điền các ô đang trống.</p>
+    root.innerHTML = `<div class="note"><b>Cách dùng:</b><br>
+      <b>①</b> Tích chọn các việc <u>thuộc vị trí việc làm của bạn</u> → chọn mã ở thanh bên dưới → bấm <b>Gán cho dòng đã chọn</b>.
+      <br><b>②</b> Việc nào là <u>văn bản</u> thì chọn Nhóm (A–G) <u>và</u> Mức (I–VI); việc kỹ thuật, phần mềm… để trống hai cột này, ghi số phút nếu biết.
+      <br><b>③</b> Việc <u>không thuộc</u> vị trí việc làm (nâng lương, chi bộ, việc khác…) thì tích chọn rồi bấm <b>Đánh dấu “Không thuộc VTVL”</b> để không hiện lại ở đây.
+      <br><b>④</b> Bấm <b>Lưu thay đổi</b>. Chưa bấm Lưu thì chưa ghi gì — tải lại tab là trở về như cũ.</div>
       ${vtPeriod("gP")}<div class="filters card flat" style="margin-bottom:10px"><label class="f row"><input type="checkbox" id="gOnly" checked> Chỉ hiện việc chưa gắn mã</label>
       <input id="gKw" placeholder="Lọc theo nội dung…"><span id="gCnt" class="muted"></span></div>
-      <div class="table-wrap scroll"><table class="tbl kpi-table"><thead><tr><th>Ngày</th><th>Nội dung</th><th>Mã công việc</th><th>Vai trò</th><th>Nhóm</th><th>Mức</th><th>Số, ký hiệu</th><th title="Thời gian thực tế (phút)">Phút</th></tr></thead><tbody id="gBody"></tbody></table></div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:12px">
-        <label class="f row" style="margin-right:auto">Gán mã cho các dòng đang trống:<select id="gBulk" style="max-width:360px">${dmOptions("")}</select><button class="btn sm" id="gBulkGo">Gán</button></label>
-        <button class="btn" id="gSuggest">${ico("wand")} Gợi ý nhóm, số ký hiệu</button><button class="btn primary" id="gSave">Lưu thay đổi</button></div>`;
+      <div class="table-wrap scroll"><table class="tbl kpi-table"><thead><tr><th><input type="checkbox" id="gAll" title="Chọn tất cả"></th><th>Ngày</th><th>Nội dung</th><th>Mã công việc</th><th>Vai trò</th><th>Nhóm</th><th>Mức</th><th>Số, ký hiệu</th><th title="Thời gian thực tế (phút)">Phút</th></tr></thead><tbody id="gBody"></tbody></table></div>
+      <div class="card flat" style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <b id="gSel">Đã chọn 0 dòng</b>
+        <select id="gBulk" style="max-width:380px">${dmOptions("")}</select>
+        <button class="btn sm" id="gBulkGo">Gán cho dòng đã chọn</button>
+        <button class="btn sm" id="gKhac">Đánh dấu “Không thuộc VTVL”</button>
+        <span style="flex:1"></span>
+        <button class="btn" id="gSuggest" title="Chỉ điền ô đang trống của các dòng đã có mã thuộc VTVL của bạn">${ico("wand")} Gợi ý nhóm, mức, số ký hiệu</button><button class="btn primary" id="gSave">Lưu thay đổi</button></div>`;
     let list = [];
-    const row = (t, i) => `<tr data-i="${i}"><td class="nowrap">${C.fmtD(t.ngay_bd)}</td><td class="t">${esc(t.title)}</td>
+    const row = (t, i) => `<tr data-i="${i}"><td><input type="checkbox" class="gChk"></td><td class="nowrap">${C.fmtD(t.ngay_bd)}</td><td class="t">${esc(t.title)}</td>
       <td><select class="w-xl" data-f="ma_cv">${dmOptions(t.ma_cv || "")}</select></td>
       <td><select class="w-md" data-f="vai_tro">${opts(C.VAI_TRO, t.vai_tro || (t.chu_tri === false ? "Phối hợp" : "Chủ trì"))}</select></td>
       <td><select class="w-sm" data-f="nhom_sp">${nhomOpts(t.nhom_sp || "")}</select></td><td><select class="w-sm" data-f="muc_do">${mucOpts(t.muc_do, true)}</select></td>
-      <td><input class="w-md" data-f="so_ky_hieu" value="${esc(t.so_ky_hieu || "")}"></td><td><input class="w-sm" type="number" min="0" data-f="so_phut" value="${t.so_phut ?? ""}"></td></tr>`;
+      <td><input class="w-md" data-f="so_ky_hieu" value="${esc(t.so_ky_hieu || "")}"></td><td><input class="w-sm" type="number" min="0" data-f="so_phut" value="${t.so_phut ?? ""}" placeholder="${C.coVanBan(t) ? "" : (C.phutTuGio(t) ? "≈" + C.phutTuGio(t) : "")}" title="${C.phutTuGio(t) ? "Ô trống: phần mềm ước tính " + C.phutTuGio(t) + " phút từ giờ bắt đầu – kết thúc" : ""}"></td></tr>`;
     const read = (tr) => {
       const g = (f) => $(`[data-f=${f}]`, tr).value;
       return { ma_cv: g("ma_cv") || null, vai_tro: g("vai_tro"), chu_tri: g("vai_tro") === "Chủ trì", nhom_sp: g("nhom_sp") || null, muc_do: g("muc_do") ? +g("muc_do") : null,
         so_ky_hieu: g("so_ky_hieu").trim() || null, so_phut: g("so_phut") === "" ? null : Math.max(0, Math.round(+g("so_phut") || 0)) };
     };
+    const selRows = () => $$("#gBody tr[data-i]").filter((tr) => $(".gChk", tr).checked);
+    const updSel = () => { $("#gSel").textContent = `Đã chọn ${selRows().length} dòng`; };
     function refresh() {
       const k = periodGet("gP"), kw = $("#gKw").value.trim().toLowerCase();
       list = tasksOf(k.tu, k.den).filter((t) => (!$("#gOnly").checked || !t.ma_cv) && (!kw || t.title.toLowerCase().includes(kw)));
-      $("#gBody").innerHTML = list.length ? list.map(row).join("") : `<tr><td colspan="8" class="empty">Không có công việc phù hợp.</td></tr>`;
-      $("#gCnt").textContent = `${list.length} việc`;
+      $("#gBody").innerHTML = list.length ? list.map(row).join("") : `<tr><td colspan="9" class="empty">Không có công việc phù hợp.</td></tr>`;
+      $("#gCnt").textContent = `${list.length} việc`; $("#gAll").checked = false; updSel();
     }
     periodWire("gP", refresh); $("#gOnly").addEventListener("change", refresh); $("#gKw").addEventListener("input", refresh);
+    $("#gAll").addEventListener("change", (e) => { $$("#gBody .gChk").forEach((c) => { c.checked = e.target.checked; }); updSel(); });
+    $("#gBody").addEventListener("change", (e) => {
+      const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+      if (e.target.classList.contains("gChk")) return updSel();
+      tr.classList.remove("row-bad");
+      // chọn nhóm mà chưa có mức → tạm điền mức III (Thông thường), sửa lại nếu cần
+      if (e.target.dataset.f === "nhom_sp" && e.target.value && !$("[data-f=muc_do]", tr).value) $("[data-f=muc_do]", tr).value = "3";
+      if (e.target.dataset.f === "nhom_sp" && !e.target.value) $("[data-f=muc_do]", tr).value = "";
+    });
+    const apply = (ma, label) => {
+      const rows = selRows(); if (!rows.length) return toast("Tích chọn ít nhất một dòng ở cột đầu tiên.", true);
+      rows.forEach((tr) => { $("[data-f=ma_cv]", tr).value = ma; if (ma === "KHAC") { $("[data-f=nhom_sp]", tr).value = ""; $("[data-f=muc_do]", tr).value = ""; } $(".gChk", tr).checked = false; tr.classList.add("row-done"); });
+      $("#gAll").checked = false; updSel(); toast(`${label} cho ${rows.length} dòng — bấm Lưu thay đổi để ghi.`);
+    };
+    $("#gBulkGo").onclick = () => { const v = $("#gBulk").value; if (!v) return toast("Chọn mã công việc ở ô bên cạnh trước.", true); apply(v, "Đã gán mã"); };
+    $("#gKhac").onclick = () => { if (!S.dmMap.has("KHAC")) return toast("Danh mục chưa có mã KHAC — chạy lại file SQL nạp danh mục.", true); apply("KHAC", "Đã đánh dấu “Không thuộc VTVL”"); };
     $("#gSuggest").onclick = () => {
       let n = 0;
       $$("#gBody tr[data-i]").forEach((tr) => {
-        const t = list[+tr.dataset.i], sN = $("[data-f=nhom_sp]", tr), sK = $("[data-f=so_ky_hieu]", tr);
+        const t = list[+tr.dataset.i], ma = $("[data-f=ma_cv]", tr).value; if (!laCuaToi(ma)) return;
+        const sN = $("[data-f=nhom_sp]", tr), sM = $("[data-f=muc_do]", tr), sK = $("[data-f=so_ky_hieu]", tr);
         const k = C.goiYNhom(t.title), so = C.timSoKyHieu(t.title + " " + (t.ket_qua || "") + " " + (t.ghi_chu || ""));
-        if (k && !sN.value) { sN.value = k; n++; } if (so && !sK.value) { sK.value = so; n++; }
+        if (k && !sN.value) { sN.value = k; if (!sM.value) sM.value = "3"; n++; }
+        if (so && !sK.value) { sK.value = so; n++; }
       });
-      toast(n ? `Đã gợi ý ${n} ô — kiểm tra rồi bấm Lưu.` : "Không có gợi ý mới.");
+      toast(n ? `Đã gợi ý ${n} ô (mức tạm để III – Thông thường) — kiểm tra lại rồi bấm Lưu.` : "Không có gợi ý mới. Gợi ý chỉ áp dụng cho dòng đã gán mã thuộc VTVL của bạn.");
     };
-    $("#gBulkGo").onclick = () => { const v = $("#gBulk").value; if (!v) return toast("Chọn mã công việc trước.", true); let n = 0; $$("#gBody [data-f=ma_cv]").forEach((s) => { if (!s.value) { s.value = v; n++; } }); toast(`Đã gán cho ${n} dòng — bấm Lưu để ghi.`); };
     $("#gSave").onclick = async () => {
-      const ch = [], err = [];
+      const ch = []; let bad = 0;
       $$("#gBody tr[data-i]").forEach((tr) => {
         const t = list[+tr.dataset.i], d = read(tr);
-        if ((d.nhom_sp && !d.muc_do) || (!d.nhom_sp && d.muc_do)) { err.push(t.title); return; }
+        if ((d.nhom_sp && !d.muc_do) || (!d.nhom_sp && d.muc_do)) { tr.classList.add("row-bad"); bad++; return; }
         if (Object.keys(d).some((x) => String(t[x] ?? "") !== String(d[x] ?? ""))) ch.push({ t, d });
       });
-      if (err.length) return alertDlg(`Có ${err.length} dòng chỉ chọn nhóm hoặc chỉ chọn mức (cần chọn đủ cả hai):<br><small>${err.slice(0, 5).map(esc).join("<br>")}</small>`);
+      if (bad) { const f = $("#gBody tr.row-bad"); f && f.scrollIntoView({ block: "center" }); return alertDlg(`Có <b>${bad}</b> dòng (tô đỏ) mới chọn Nhóm mà chưa chọn Mức, hoặc ngược lại. Chọn đủ cả hai, hoặc để trống cả hai nếu không phải văn bản.`); }
       if (!ch.length) return toast("Không có thay đổi nào để lưu.");
       const res = await guard(async () => { const out = []; for (let i = 0; i < ch.length; i += 20) out.push(...await Promise.all(ch.slice(i, i + 20).map(({ t, d }) => DB.Tasks.update(t.id, d)))); return out; }, `Đã lưu ${ch.length} công việc.`);
       if (res) { res.forEach((r) => Object.assign(S.tasks.find((x) => x.id === r.id), r)); refresh(); }
