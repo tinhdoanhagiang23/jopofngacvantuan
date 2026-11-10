@@ -729,7 +729,7 @@
       <div id="sWarn"></div>`;
     function refresh() {
       const k = periodGet("sP"), list = tasksVtvl(k.tu, k.den), m = C.tongHopB1(list, b1Opts());
-      const khac = m.get("KHAC"); m.delete("KHAC");
+      const khac = m.get("KHAC"), kk = m.get("KK"); m.delete("KHAC"); m.delete("KK");
       const keys = [...m.keys()].sort(sortMa);
       let mine = { sl: 0, ph: 0, kt: 0, gio: 0 };
       keys.forEach((ma) => { const r = m.get(ma); if (laCuaToi(ma)) { mine.sl += r.sl; mine.ph += r.slPH; mine.kt += r.slKT; mine.gio += r.gioTong; } });
@@ -762,7 +762,8 @@
       if (chuaHt.length) w.push(`${chuaHt.length} việc thuộc VTVL chưa hoàn thành nhưng vẫn được tính — kiểm tra lại trạng thái.`);
       const qua = list.filter((t) => laCuaToi(t.ma_cv) && !C.coVanBan(t) && (t.so_phut === null || t.so_phut === undefined || t.so_phut === "") && C.phutTuGio(t) > 960);
       if (qua.length) w.push(`${qua.length} sản phẩm khác đang được ƯỚC TÍNH trên 16 giờ từ giờ bắt đầu – kết thúc (8 giờ × mỗi ngày làm việc), có thể cao hơn thực tế — vào tab Gắn mã hàng loạt, bỏ tích “Chỉ hiện việc chưa gắn mã” và nhập số phút thực tế.`);
-      if (khac) w.push(`${khac.slThuc || (khac.sl + khac.slPH + khac.slKT)} việc đã đánh dấu “Không thuộc VTVL” — không tính vào số liệu.`);
+      if (khac) w.push(`${khac.sl + khac.slPH + khac.slKT + (khac.thieuDM || 0)} việc đã đánh dấu “Không thuộc VTVL” — không tính vào số liệu.`);
+      if (kk) w.push(`${kk.sl + kk.slPH + kk.slKT + (kk.thieuDM || 0)} việc mã KK (trùng hoặc đã tính gộp ở dòng khác) — không tính vào số liệu.`);
       $("#sWarn").innerHTML = w.length ? `<div class="warn" style="margin-top:14px">${w.map(esc).join("<br>")}</div>` : "";
     }
     periodWire("sP", refresh); refresh();
@@ -961,7 +962,7 @@
       <div class="card" style="margin-top:14px"><label class="f row"><input type="checkbox" id="eMine" checked> Chỉ lấy công việc thuộc VTVL của tôi (${esc(vtvlMa())})</label>
       <label class="f row"><input type="checkbox" id="eChk" checked> Kèm sheet “Đối chiếu” (việc chưa gắn mã, văn bản thiếu định mức)</label>
       <div style="margin-top:12px"><button class="btn primary" id="eGo">${ico("dl")} Xuất Excel Biểu 01, 02, B1</button></div></div>`;
-    const pick = () => { const k = periodGet("eP"), all = tasksVtvl(k.tu, k.den); return { k, all, list: all.filter((t) => t.ma_cv && (!$("#eMine").checked || laCuaToi(t.ma_cv))) }; };
+    const pick = () => { const k = periodGet("eP"), all = tasksVtvl(k.tu, k.den); return { k, all, list: all.filter((t) => t.ma_cv && t.ma_cv !== "KHAC" && t.ma_cv !== "KK" && (!$("#eMine").checked || laCuaToi(t.ma_cv))) }; };
     function refresh() {
       const { list, all } = pick(), c = { A: 0, B: 0, C: 0, D: 0 }; list.forEach((t) => { c[C.phanBieu01(t)]++; });
       $("#eStats").innerHTML = stat("A. VĂN BẢN CÓ SỐ", c.A, "#C8102E", "chủ trì") + stat("B. PHỐI HỢP", c.B, "#2A5298") + stat("C. CHƯA CÓ SỐ", c.C, "#E67E22", "văn bản giấy, ký nháy…") + stat("D. SẢN PHẨM KHÁC", c.D, "#7D3C98", `${all.filter((t) => !t.ma_cv).length} việc chưa gắn mã`);
